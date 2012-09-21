@@ -178,6 +178,7 @@ class SAI_CurlStub
 
     private function _getResponse($handle)
     {
+        $returnValue = false;
         $options = $handle->options;
         foreach($this->_mapOptionCounts as $hash => $optionCount)
         {
@@ -186,9 +187,10 @@ class SAI_CurlStub
                 if(!isset($options[$option]) || $options[$option] != $value)
                     continue 2;
             }
-            return $this->_mapResponses[$hash];
+            $returnValue = $this->_mapResponses[$hash];
+            break;
         }
-        return false;
+        return $returnValue;
     }
 
     private static $errorLookup = array(
