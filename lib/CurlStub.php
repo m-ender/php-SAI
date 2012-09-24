@@ -202,9 +202,9 @@ class SAI_CurlStub
     {
         $response = false;
 
-        $key = $this->_determineKey($handle);
+        $key = $this->_determineKey($handle, "_mapResponses");
 
-        if($key !== null && isset($this->_mapResponses[$key]))
+        if($key !== null)
             $response = $this->_mapResponses[$key];
 
         return $response;
@@ -214,9 +214,9 @@ class SAI_CurlStub
     {
         $errorCode = 0;
 
-        $key = $this->_determineKey($handle);
+        $key = $this->_determineKey($handle, "_mapErrorCodes");
 
-        if($key !== null && isset($this->_mapErrorCodes[$key]))
+        if($key !== null)
             $errorCode = $this->_mapErrorCodes[$key];
 
         return $errorCode;
@@ -226,7 +226,7 @@ class SAI_CurlStub
     {
         $info = '';
 
-        $key = $this->_determineKey($handle);
+        $key = $this->_determineKey($handle, "_mapInfo");
 
         if($key !== null && isset($this->_mapInfo[$key][$opt]))
             $info = $this->_mapInfo[$key][$opt];
@@ -243,9 +243,9 @@ class SAI_CurlStub
             $infoArray[$strKey] = '';
         }
 
-        $handleKey = $this->_determineKey($handle);
+        $handleKey = $this->_determineKey($handle, "_mapInfo");
 
-        if($handleKey !== null && isset($this->_mapInfo[$handleKey]))
+        if($handleKey !== null)
         {
             foreach($this->_mapInfo[$handleKey] as $intKey => $value)
             {
@@ -257,7 +257,7 @@ class SAI_CurlStub
         return $infoArray;
     }
 
-    private function _determineKey($handle)
+    private function _determineKey($handle, $map)
     {
         // TODO: Treat URL option separately, so that order of parameters does not matter
         // TODO: Treat HEADER option as array of individual options
@@ -271,8 +271,12 @@ class SAI_CurlStub
                     continue 2;
             }
 
-            $returnValue = $hash;
+            // We need this check, because the element in _mapOptionCounts might have been created
+            // for a different type of output. In this case, we need to continue searching
+            if(!isset($this->{$map}[$hash]))
+                continue;
 
+            $returnValue = $hash;
             break;
         }
         return $returnValue;

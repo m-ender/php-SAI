@@ -12,6 +12,12 @@ class SAI_CurlStubTest extends PHPUnit_Framework_TestCase
     const DEFAULT_ERRORCODE = CURLE_COULDNT_RESOLVE_HOST;
     const DEFAULT_ERRORMESSAGE = 'CURLE_COULDNT_RESOLVE_HOST';
 
+    const RETURN_RESPONSE = 1;
+    const RETURN_ERRORCODE = 2;
+    const RETURN_ERRORMESSAGE = 3;
+    const RETURN_INFO = 4;
+
+
     public function setUp()
     {
         $this->_curlStub = new SAI_CurlStub();
@@ -21,20 +27,20 @@ class SAI_CurlStubTest extends PHPUnit_Framework_TestCase
 
     public function testSetResponse()
     {
-        $curl = $this->_curlStub;
-
-        $ch = $curl->curl_init();
-        ob_start();
-        $curl->curl_exec($ch);
-        $actualResponse = ob_get_clean();
-        $curl->curl_close($ch);
+        $actualResponse = $this->_getResponseFromCurl();
 
         $this->assertEquals(self::DEFAULT_RESPONSE, $actualResponse);
     }
 
     public function testReturnTransfer()
     {
-        $actualResponse = $this->_getResponseFromCurl();
+        $curl = $this->_curlStub;
+
+        $ch = $curl->curl_init();
+        $curl->curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $actualResponse = $curl->curl_exec($ch);
+        $curl->curl_close($ch);
 
         $this->assertEquals(self::DEFAULT_RESPONSE, $actualResponse);
     }
@@ -280,65 +286,130 @@ class SAI_CurlStubTest extends PHPUnit_Framework_TestCase
         }
     }
 
-    private function _getResponseFromCurl($url = null, $options = null)
+    public function testDifferentPrioritiesForDifferentOutput()
     {
         $curl = $this->_curlStub;
 
-        $ch = $curl->curl_init($url);
-        $curl->curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $expectedResponse1 = 'google page for chrome found';
+        $url1 = 'http://www.google.com';
+        $userAgent1 = 'Chrome/22.0.1207.1';
+        $referer1 = 'http://mail.google.com';
+        $expectedErrorCode2 = CURLE_FILESIZE_EXCEEDED;
+        $url2 = $url1;
+        $userAgent2 = $userAgent1;
 
-        if($options != null)
-        {
+        $expectedHttpCode3 = '200';
+        $explicitInfo3 = array(
+            CURLINFO_HTTP_CODE => $expectedHttpCode3
+        );
+        $url3 = $url1;
+
+        $requiredOptions1 = array(
+            CURLOPT_URL => $url1,
+            CURLOPT_USERAGENT => $userAgent1,
+            CURLOPT_REFERER => $referer1
+        );
+        $curl->setResponse($expectedResponse1, $requiredOptions1);
+        $requiredOptions2 = array(
+            CURLOPT_URL => $url2,
+            CURLOPT_USERAGENT => $userAgent2
+        );
+        $curl->setErrorCode($expectedErrorCode2, $requiredOptions2);
+        $requiredOptions3 = array(
+            CURLOPT_URL => $url3
+        );
+        $curl->setInfo($explicitInfo3, $requiredOptions3);
+
+        // most specific case
+        $actualResponse = $this->_getResponseFromCurl($url1, $requiredOptions1);
+        $actualErrorCode = $this->_getErrorCodeFromCurl($url1, $requiredOptions1);
+        $actualHttpCode = $this->_getInfoFromCurl($url1, CURLINFO_HTTP_CODE, $requiredOptions1);
+
+        $this->assertEquals($expectedResponse1, $actualResponse);
+        $this->assertEquals($expectedErrorCode2, $actualErrorCode);
+        $this->assertEquals($expectedHttpCode3, $actualHttpCode);
+
+        // second-most specific case
+        $actualResponse = $this->_getResponseFromCurl($url2, $requiredOptions2);
+        $actualErrorCode = $this->_getErrorCodeFromCurl($url2, $requiredOptions2);
+        $actualHttpCode = $this->_getInfoFromCurl($url2, CURLINFO_HTTP_CODE, $requiredOptions2);
+
+        $this->assertEquals(self::DEFAULT_RESPONSE, $actualResponse);
+        $this->assertEquals($expectedErrorCode2, $actualErrorCode);
+        $this->assertEquals($expectedHttpCode3, $actualHttpCode);
+
+        // least specific case
+        $actualResponse = $this->_getResponseFromCurl($url3, $requiredOptions3);
+        $actualErrorCode = $this->_getErrorCodeFromCurl($url3, $requiredOptions3);
+        $actualHttpCode = $this->_getInfoFromCurl($url3, CURLINFO_HTTP_CODE, $requiredOptions3);
+
+        $this->assertEquals(self::DEFAULT_RESPONSE, $actualResponse);
+        $this->assertEquals(self::DEFAULT_ERRORCODE, $actualErrorCode);
+        $this->assertEquals($expectedHttpCode3, $actualHttpCode);
+
+        // fallback
+        $actualResponse = $this->_getResponseFromCurl();
+        $actualErrorCode = $this->_getErrorCodeFromCurl();
+        $actualHttpCode = $this->_getInfoFromCurl(null , CURLINFO_HTTP_CODE);
+
+        $this->assertEquals(self::DEFAULT_RESPONSE, $actualResponse);
+        $this->assertEquals(self::DEFAULT_ERRORCODE, $actualErrorCode);
+        $this->assertEquals('', $actualHttpCode);
+    }
+
+    private function _getResponseFromCurl($url = null, $options = null)
+    {
+        return $this->_getResultFromCurl($url, $options, self::RETURN_RESPONSE);
+    }
+
+    private function _getErrorCodeFromCurl($url = null, $options = null)
+    {
+        return $this->_getResultFromCurl($url, $options, self::RETURN_ERRORCODE);
+    }
+
+    private function _getErrorMessageFromCurl($url = null, $options = null)
+    {
+        return $this->_getResultFromCurl($url, $options, self::RETURN_ERRORMESSAGE);
+    }
+
+    private function _getInfoFromCurl($url = null, $opt = 0, $options = null)
+    {
+        return $this->_getResultFromCurl($url, $options, self::RETURN_INFO, $opt);
+    }
+
+    private function _getResultFromCurl($url, $options, $returnFlag, $opt = 0)
+    {
+        $curl = $this->_curlStub;
+        $ch = $curl->curl_init($url);
+
+        if ($options != null) {
             $curl->curl_setopt_array($ch, $options);
         }
 
-        $actualResponse = $curl->curl_exec($ch);
-        $curl->curl_close($ch);
-        return $actualResponse;
-    }
-
-    private function _getErrorCodeFromCurl($url = null)
-    {
-        $curl = $this->_curlStub;
-
-        $ch = $curl->curl_init($url);
-        $curl->curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
+        ob_start();
         $curl->curl_exec($ch);
+        $actualResponse = ob_get_clean();
 
-        $actualErrorCode = $curl->curl_errno($ch);
+        $result = null;
 
-        $curl->curl_close($ch);
-        return $actualErrorCode;
-    }
-
-    private function _getErrorMessageFromCurl($url = null)
-    {
-        $curl = $this->_curlStub;
-
-        $ch = $curl->curl_init($url);
-        $curl->curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $curl->curl_exec($ch);
-
-        $actualErrorMessage = $curl->curl_error($ch);
-
-        $curl->curl_close($ch);
-        return $actualErrorMessage;
-    }
-
-    private function _getInfoFromCurl($url = null, $opt = 0)
-    {
-        $curl = $this->_curlStub;
-
-        $ch = $curl->curl_init($url);
-        $curl->curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-        $curl->curl_exec($ch);
-
-        $actualInfo = $curl->curl_getinfo($ch, $opt);
+        switch($returnFlag)
+        {
+        case self::RETURN_RESPONSE:
+            $result = $actualResponse;
+            break;
+        case self::RETURN_ERRORCODE:
+            $result = $curl->curl_errno($ch);
+            break;
+        case self::RETURN_ERRORMESSAGE:
+            $result = $curl->curl_error($ch);
+            break;
+        case self::RETURN_INFO:
+            $result = $curl->curl_getinfo($ch, $opt);
+            break;
+        }
 
         $curl->curl_close($ch);
-        return $actualInfo;
+
+        return $result;
     }
 }
