@@ -14,6 +14,8 @@ class SAI_CurlStub
     private $_mapOptionCounts = array();
     private $_mapOptions = array();
     private $_mapResponses = array();
+    private $_mapErrorCodes = array();
+    private $_mapInfo = array();
 
     /**
      * @var array of SAI_Curl_Handle
@@ -41,7 +43,7 @@ class SAI_CurlStub
         if(!isset($this->_handles[$ch]))
             return 0;
 
-        return $this->_getErrno($this->_handles[$ch]);
+        return $this->_getErrorCode($this->_handles[$ch]);
     }
 
     public function curl_error($ch)
@@ -74,13 +76,14 @@ class SAI_CurlStub
 
     public function curl_getinfo($ch, $opt = 0)
     {
+        // TODO: Include logic to build CURLINFO_EFFECTIVE_URL?
         if(!isset($this->_handles[$ch]))
             trigger_error(__FUNCTION__.'(): '.$ch.' is not a valid cURL handle resource', E_USER_WARNING);
 
         if($opt == 0)
             return $this->_getInfoArray($this->_handles[$ch]);
 
-        return $this->_getInfo($this->handles[$ch], $opt);
+        return $this->_getInfo($this->_handles[$ch], $opt);
     }
 
     public function curl_init($url = null)
@@ -168,17 +171,95 @@ class SAI_CurlStub
 
     public function setResponse($expectedResponse, $requiredOptions = array())
     {
+        $hash = $this->_getHashAndSetOptionMaps($requiredOptions);
+        $this->_mapResponses[$hash] = $expectedResponse;
+    }
+
+    public function setErrorCode($expectedErrorCode, $requiredOptions = array())
+    {
+        $hash = $this->_getHashAndSetOptionMaps($requiredOptions);
+        $this->_mapErrorCodes[$hash] = $expectedErrorCode;
+    }
+
+    public function setInfo($expectedInfo, $requiredOptions = array())
+    {
+        $hash = $this->_getHashAndSetOptionMaps($requiredOptions);
+        $this->_mapInfo[$hash] = $expectedInfo;
+    }
+
+    private function _getHashAndSetOptionMaps($requiredOptions)
+    {
         $hash = md5(http_build_query($requiredOptions));
 
         $this->_mapOptionCounts[$hash] = count($requiredOptions);
         arsort($this->_mapOptionCounts);
         $this->_mapOptions[$hash] = $requiredOptions;
-        $this->_mapResponses[$hash] = $expectedResponse;
+        return $hash;
     }
 
     private function _getResponse($handle)
     {
-        $returnValue = false;
+        $response = false;
+
+        $key = $this->_determineKey($handle);
+
+        if($key !== null && isset($this->_mapResponses[$key]))
+            $response = $this->_mapResponses[$key];
+
+        return $response;
+    }
+
+    private function _getErrorCode($handle)
+    {
+        $errorCode = 0;
+
+        $key = $this->_determineKey($handle);
+
+        if($key !== null && isset($this->_mapErrorCodes[$key]))
+            $errorCode = $this->_mapErrorCodes[$key];
+
+        return $errorCode;
+    }
+
+    private function _getInfo($handle, $opt)
+    {
+        $info = '';
+
+        $key = $this->_determineKey($handle);
+
+        if($key !== null && isset($this->_mapInfo[$key][$opt]))
+            $info = $this->_mapInfo[$key][$opt];
+
+        return $info;
+    }
+
+    private function _getInfoArray($handle)
+    {
+        $infoArray = array();
+
+        foreach(self::$infoLookup as $strKey)
+        {
+            $infoArray[$strKey] = '';
+        }
+
+        $handleKey = $this->_determineKey($handle);
+
+        if($handleKey !== null && isset($this->_mapInfo[$handleKey]))
+        {
+            foreach($this->_mapInfo[$handleKey] as $intKey => $value)
+            {
+                $strKey = self::$infoLookup[$intKey];
+                $infoArray[$strKey] = $value;
+            }
+        }
+
+        return $infoArray;
+    }
+
+    private function _determineKey($handle)
+    {
+        // TODO: Treat URL separately, so that order of parameters does not matter
+        $returnValue = null;
         $options = $handle->options;
         foreach($this->_mapOptionCounts as $hash => $optionCount)
         {
@@ -187,14 +268,16 @@ class SAI_CurlStub
                 if(!isset($options[$option]) || $options[$option] != $value)
                     continue 2;
             }
-            $returnValue = $this->_mapResponses[$hash];
+
+            $returnValue = $hash;
+
             break;
         }
         return $returnValue;
     }
 
     private static $errorLookup = array(
-        0  => '',
+        0  => 'CURLE_OK',
         1  => 'CURLE_UNSUPPORTED_PROTOCOL',
         2  => 'CURLE_FAILED_INIT',
         3  => 'CURLE_URL_MALFORMAT',
@@ -266,11 +349,34 @@ class SAI_CurlStub
         81 => 'CURLE_AGAIN',
         82 => 'CURLE_SSL_CRL_BADFILE',
         83 => 'CURLE_SSL_ISSUER_ERROR',
-        84 => 'CURLE_FTP_PRET_FAILED',
-        84 => 'CURLE_FTP_PRET_FAILED',
+        84 => 'CURL E_FTP_PRET_FAILED',
         85 => 'CURLE_RTSP_CSEQ_ERROR',
         86 => 'CURLE_RTSP_SESSION_ERROR',
         87 => 'CURLE_FTP_BAD_FILE_LIST',
         88 => 'CURLE_CHUNK_FAILED'
+    );
+
+    public static $infoLookup = array(
+        CURLINFO_EFFECTIVE_URL => 'url',
+        CURLINFO_HTTP_CODE => 'http_code',
+        CURLINFO_FILETIME => 'filetime',
+        CURLINFO_TOTAL_TIME => 'total_time',
+        CURLINFO_NAMELOOKUP_TIME => 'namelookup_time',
+        CURLINFO_CONNECT_TIME => 'connect_time',
+        CURLINFO_PRETRANSFER_TIME => 'pretransfer_time',
+        CURLINFO_STARTTRANSFER_TIME => 'starttransfer_time',
+        CURLINFO_REDIRECT_COUNT => 'redirect_count',
+        CURLINFO_REDIRECT_TIME => 'redirect_time',
+        CURLINFO_SIZE_UPLOAD => 'size_upload',
+        CURLINFO_SIZE_DOWNLOAD => 'size_download',
+        CURLINFO_SPEED_DOWNLOAD => 'speed_download',
+        CURLINFO_SPEED_UPLOAD => 'speed_upload',
+        CURLINFO_HEADER_SIZE => 'header_size',
+        CURLINFO_HEADER_OUT => 'request_header',
+        CURLINFO_REQUEST_SIZE => 'request_size',
+        CURLINFO_SSL_VERIFYRESULT => 'ssl_verify_result',
+        CURLINFO_CONTENT_LENGTH_DOWNLOAD => 'download_content_length',
+        CURLINFO_CONTENT_LENGTH_UPLOAD => 'upload_content_length',
+        CURLINFO_CONTENT_TYPE => 'content_type'
     );
 }
