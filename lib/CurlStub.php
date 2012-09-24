@@ -189,6 +189,7 @@ class SAI_CurlStub
 
     private function _getHashAndSetOptionMaps($requiredOptions)
     {
+        ksort($requiredOptions);
         $hash = md5(http_build_query($requiredOptions));
 
         $this->_mapOptionCounts[$hash] = count($requiredOptions);
@@ -258,7 +259,8 @@ class SAI_CurlStub
 
     private function _determineKey($handle)
     {
-        // TODO: Treat URL separately, so that order of parameters does not matter
+        // TODO: Treat URL option separately, so that order of parameters does not matter
+        // TODO: Treat HEADER option as array of individual options
         $returnValue = null;
         $options = $handle->options;
         foreach($this->_mapOptionCounts as $hash => $optionCount)
